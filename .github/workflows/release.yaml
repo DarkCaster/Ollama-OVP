@@ -2,8 +2,9 @@ name: release
 
 on:
   push:
+    branches: [ overprov ]
     tags:
-      - 'v*'
+      - 'v**.ovp'
 
 env:
   CGO_CFLAGS: '-O3'
@@ -436,7 +437,7 @@ jobs:
   trigger:
     runs-on: ubuntu-latest
     environment: release
-    needs: [darwin-build, windows-build, windows-depends]
+    needs: [windows-build, windows-depends]
     steps:
       - name: Trigger downstream release process
         run: |
@@ -445,12 +446,12 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.RELEASE_TOKEN }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/ollama/${{ vars.RELEASE_REPO }}/dispatches \
+            https://api.github.com/repos/DarkCaster/${{ vars.RELEASE_REPO }}/dispatches \
             -d "{\"event_type\": \"trigger-workflow\", \"client_payload\": {\"run_id\": \"${GITHUB_RUN_ID}\", \"version\": \"${GITHUB_REF_NAME#v}\"}}"
 
   # Aggregate all the assets and ship a release
   release:
-    needs: [darwin-sign, windows-sign, linux-build]
+    needs: [windows-sign, linux-build]
     runs-on: linux
     environment: release
     permissions:
@@ -459,10 +460,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist-darwin
-          path: dist
       - uses: actions/download-artifact@v4
         with:
           name: dist-windows
