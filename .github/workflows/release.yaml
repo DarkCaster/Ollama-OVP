@@ -115,7 +115,7 @@ jobs:
           CMAKE_GENERATOR: Ninja
       - uses: actions/upload-artifact@v4
         with:
-          name: depends-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.preset }}
+          name: depends-windows-${{ matrix.arch }}-${{ matrix.preset }}
           path: dist\*
 
   windows-build:
@@ -157,7 +157,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: |
-          go build -o dist/${{ matrix.os }}-${{ matrix.arch }}/ .
+          go build -o dist/windows-${{ matrix.arch }}/ .
       - if: matrix.arch == 'arm64'
         run: |
           Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.arm64.exe" -OutFile "dist\windows-arm64\vc_redist.arm64.exe"
@@ -168,10 +168,10 @@ jobs:
           VCToolsRedistDir: stub
       - uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.os }}-${{ matrix.arch }}
+          name: build-windows-${{ matrix.arch }}
           path: |
-            dist\${{ matrix.os }}-${{ matrix.arch }}\*.exe
-            dist\${{ matrix.os }}-${{ matrix.arch }}-app.exe
+            dist\windows-${{ matrix.arch }}\*.exe
+            dist\windows-${{ matrix.arch }}-app.exe
 
   windows-sign:
     runs-on: windows-latest
