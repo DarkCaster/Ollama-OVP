@@ -32,7 +32,7 @@ jobs:
         arch: [amd64]
         preset: ['CPU','CUDA 12']
         shouldBuild:
-          - {{ endsWith(github.ref, '.fix**') }}
+          - ${{ endsWith(github.ref, '.fix**') }}
         exclude:
           - shouldBuild: false
             preset: 'CUDA 12'
