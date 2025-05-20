@@ -30,15 +30,10 @@ jobs:
       matrix:
         os: [windows-latest]
         arch: [amd64]
-        preset: ['CPU', 'CUDA 12']
-        shouldExclude:
-          - ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') && contains(github.ref, '.ovp') && contains(github.ref, '.fix') }}
-        exclude:
-          - shouldExclude: true
-            preset: 'CUDA 12'
+        preset: ['CPU']
         include:
-          - preset: 'CPU'
-          - os: windows-latest
+          - if: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') && contains(github.ref, '.ovp') && !contains(github.ref, '.fix') }}
+            os: windows-latest
             arch: amd64
             preset: 'CUDA 12'
             install: https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_571.96_windows.exe
