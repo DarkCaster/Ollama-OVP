@@ -268,7 +268,7 @@ func EstimateGPULayers(gpus []discover.GpuInfo, f *ggml.GGML, projectors []strin
 			for j := len(gpusWithSpace); j > 0; j-- {
 				g := gpusWithSpace[layerCount%j]
 				used := gpuAllocations[g.i] + max(graphPartialOffload, graphFullOffload)
-				if g.g.FreeMemory > overhead+used+memoryLastLayer {
+				if g.g.FreeMemory+overprov > overhead+used+memoryLastLayer {
 					gpuAllocations[g.i] += memoryLastLayer
 					layerCounts[g.i]++
 					layerCount++
