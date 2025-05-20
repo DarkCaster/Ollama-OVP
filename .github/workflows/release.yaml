@@ -28,14 +28,15 @@ jobs:
   windows-depends:
     strategy:
       matrix:
+        os: [windows-latest]
+        arch: [amd64]
+        preset: ['CPU']
         shouldExclude:
           - ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') && contains(github.ref, '.ovp') && contains(github.ref, '.fix') }}
         exclude:
           - shouldExclude: true
         include:
-          - os: windows-latest
-            arch: amd64
-            preset: 'CPU'
+          - preset: 'CPU'
           - shouldExclude: false
             os: windows-latest
             arch: amd64
