@@ -28,24 +28,24 @@ jobs:
   windows-depends:
     strategy:
       matrix:
-        os: [windows-latest]
+        os: [windows]
         arch: [amd64]
         preset: ['CPU']
         shouldExclude:
           - ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') && contains(github.ref, '.ovp') && contains(github.ref, '.fix') }}
         include:
-          - os: windows-latest
+          - os: windows
             arch: amd64
             preset: 'CUDA 12'
             install: https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_571.96_windows.exe
             cuda-version: '12.8'
-    runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
+    runs-on: windows-latest
     environment: release
     env:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
     steps:
-      - if: matrix.shouldExclude == false
-        name: Install system dependencies
+      - name: Install system dependencies
+        if: matrix.shouldExclude == false
         run: |
           choco install -y --no-progress ccache ninja
           ccache -o cache_dir=${{ github.workspace }}\.ccache
@@ -93,15 +93,15 @@ jobs:
             C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA
             C:\Program Files\AMD\ROCm
           key: ${{ matrix.install }}
-      - if: matrix.shouldExclude == false
-        uses: actions/checkout@v4
-      - if: matrix.shouldExclude == false
-        uses: actions/cache@v4
+      - uses: actions/checkout@v4
+        if: matrix.shouldExclude == false
+      - uses: actions/cache@v4
+        if: matrix.shouldExclude == false
         with:
           path: ${{ github.workspace }}\.ccache
           key: ccache-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.preset }}
-      - if: matrix.shouldExclude == false
-        name: Build target "${{ matrix.preset }}"
+      - name: Build target "${{ matrix.preset }}"
+        if: matrix.shouldExclude == false
         run: |
           Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
           Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation  -DevCmdArguments '-arch=x64 -no_logo'
@@ -110,18 +110,18 @@ jobs:
           cmake --install build --component "${{ startsWith(matrix.preset, 'CUDA ') && 'CUDA' || startsWith(matrix.preset, 'ROCm ') && 'HIP' || 'CPU' }}" --strip --parallel 8
         env:
           CMAKE_GENERATOR: Ninja
-      - if: matrix.shouldExclude == false
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
+        if: matrix.shouldExclude == false
         with:
-          name: depends-windows-${{ matrix.arch }}-${{ matrix.preset }}
+          name: depends-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.preset }}
           path: dist\*
 
   windows-build:
     strategy:
       matrix:
-        os: [windows-latest]
+        os: [windows]
         arch: [amd64]
-    runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
+    runs-on: windows-latest
     environment: release
     needs: [setup-environment]
     env:
@@ -155,7 +155,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: |
-          go build -o dist/windows-${{ matrix.arch }}/ .
+          go build -o dist/${{ matrix.os }}-${{ matrix.arch }}/ .
       - if: matrix.arch == 'arm64'
         run: |
           Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.arm64.exe" -OutFile "dist\windows-arm64\vc_redist.arm64.exe"
@@ -166,10 +166,10 @@ jobs:
           VCToolsRedistDir: stub
       - uses: actions/upload-artifact@v4
         with:
-          name: build-windows-${{ matrix.arch }}
+          name: build-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            dist\windows-${{ matrix.arch }}\*.exe
-            dist\windows-${{ matrix.arch }}-app.exe
+            dist\${{ matrix.os }}-${{ matrix.arch }}\*.exe
+            dist\${{ matrix.os }}-${{ matrix.arch }}-app.exe
 
   windows-sign:
     runs-on: windows-latest
@@ -219,6 +219,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-darwin
+          path: dist
       - uses: actions/download-artifact@v4
         with:
           name: dist-windows
