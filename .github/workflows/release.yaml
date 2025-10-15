@@ -200,22 +200,12 @@ jobs:
           path: |
             dist\${{ matrix.os }}-${{ matrix.arch }}\*.exe
 
-  windows-sign:
+  windows-package:
     runs-on: windows-latest
     environment: release
     needs: [windows-depends, windows-build]
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          $ErrorActionPreference = "Stop"
-          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=323507" -OutFile "${{ runner.temp }}\sdksetup.exe"
-          Start-Process "${{ runner.temp }}\sdksetup.exe" -ArgumentList @("/q") -NoNewWindow -Wait
-
-          Invoke-WebRequest -Uri "https://github.com/GoogleCloudPlatform/kms-integrations/releases/download/cng-v1.0/kmscng-1.0-windows-amd64.zip" -OutFile "${{ runner.temp }}\plugin.zip"
-          Expand-Archive -Path "${{ runner.temp }}\plugin.zip" -DestinationPath "${{ runner.temp }}\plugin\"
-          & "${{ runner.temp }}\plugin\*\kmscng.msi" /quiet
-
-          echo "${{ vars.OLLAMA_CERT }}" >ollama_inc.crt
       - uses: actions/download-artifact@v4
         with:
           pattern: build-windows-*
@@ -227,7 +217,7 @@ jobs:
           path: dist\windows-amd64\
           merge-multiple: true
       - run: |
-          & .\scripts\build_windows.ps1 gatherDependencies sign buildInstaller distZip
+          & .\scripts\build_windows.ps1 gatherDependencies distZip
         env:
           KEY_CONTAINER: ${{ vars.KEY_CONTAINER }}
       - uses: actions/upload-artifact@v4
@@ -239,7 +229,7 @@ jobs:
 
   # Aggregate all the assets and ship a release
   release:
-    needs: [windows-sign]
+    needs: [windows-package]
     runs-on: ubuntu-latest
     environment: release
     permissions:
