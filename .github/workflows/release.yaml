@@ -3,7 +3,10 @@ name: release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v**.ovp**'
+
+# example of full release version: v0.7.0.ovp1
+# example of fix release version: v0.7.0.ovp1.fix1
 
 env:
   CGO_CFLAGS: '-O3'
@@ -22,48 +25,18 @@ jobs:
         run: |
           echo GOFLAGS="'-ldflags=-w -s \"-X=github.com/ollama/ollama/version.Version=${GITHUB_REF_NAME#v}\" \"-X=github.com/ollama/ollama/server.mode=release\"'" >>$GITHUB_OUTPUT
 
-  darwin-build:
-    runs-on: macos-13-xlarge
-    environment: release
-    needs: setup-environment
-    strategy:
-      matrix:
-        os: [darwin]
-        arch: [amd64, arm64]
-    env:
-      GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: |
-          go build -o dist/ .
-        env:
-          GOOS: ${{ matrix.os }}
-          GOARCH: ${{ matrix.arch }}
-          CGO_ENABLED: 1
-          CGO_CPPFLAGS: '-mmacosx-version-min=11.3'
-      - if: matrix.arch == 'amd64'
-        run: |
-          cmake --preset CPU -DCMAKE_OSX_DEPLOYMENT_TARGET=11.3 -DCMAKE_SYSTEM_PROCESSOR=x86_64 -DCMAKE_OSX_ARCHITECTURES=x86_64
-          cmake --build --parallel --preset CPU
-          cmake --install build --component CPU --strip --parallel 8
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.os }}-${{ matrix.arch }}
-          path: dist/*
-
   windows-depends:
     strategy:
       matrix:
         os: [windows]
         arch: [amd64]
         preset: ['CPU']
+        shouldExclude: [false]
         include:
           - os: windows
             arch: amd64
             preset: 'CUDA 12'
+            shouldExclude: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') && contains(github.ref, '.ovp') && contains(github.ref, '.fix') }}
             install: https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_571.96_windows.exe
             cuda-components:
               - '"cudart"'
@@ -76,6 +49,7 @@ jobs:
           - os: windows
             arch: amd64
             preset: 'CUDA 13'
+            shouldExclude: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') && contains(github.ref, '.ovp') && contains(github.ref, '.fix') }}
             install: https://developer.download.nvidia.com/compute/cuda/13.0.0/local_installers/cuda_13.0.0_windows.exe
             cuda-components:
               - '"cudart"'
@@ -88,23 +62,17 @@ jobs:
             cuda-version: '13.0'
             flags: ''
             runner_dir: 'cuda_v13'
-          - os: windows
-            arch: amd64
-            preset: 'ROCm 6'
-            install: https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q4-WinSvr2022-For-HIP.exe
-            rocm-version: '6.2'
-            flags: '-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_FLAGS="-parallel-jobs=4 -Wno-ignored-attributes -Wno-deprecated-pragma" -DCMAKE_CXX_FLAGS="-parallel-jobs=4 -Wno-ignored-attributes -Wno-deprecated-pragma"'
-            runner_dir: 'rocm'
-    runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
+    runs-on: windows-latest
     environment: release
     env:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
     steps:
       - name: Install system dependencies
+        if: matrix.shouldExclude == false
         run: |
           choco install -y --no-progress ccache ninja
           ccache -o cache_dir=${{ github.workspace }}\.ccache
-      - if: startsWith(matrix.preset, 'CUDA ') || startsWith(matrix.preset, 'ROCm ')
+      - if: matrix.shouldExclude == false && ( startsWith(matrix.preset, 'CUDA ') || startsWith(matrix.preset, 'ROCm ') )
         id: cache-install
         uses: actions/cache/restore@v4
         with:
@@ -112,7 +80,7 @@ jobs:
             C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA
             C:\Program Files\AMD\ROCm
           key: ${{ matrix.install }}
-      - if: startsWith(matrix.preset, 'CUDA ')
+      - if: matrix.shouldExclude == false && startsWith(matrix.preset, 'CUDA ')
         name: Install CUDA ${{ matrix.cuda-version }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -124,7 +92,7 @@ jobs:
 
           $cudaPath = (Resolve-Path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\*").path
           echo "$cudaPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - if: startsWith(matrix.preset, 'ROCm')
+      - if: matrix.shouldExclude == false && startsWith(matrix.preset, 'ROCm')
         name: Install ROCm ${{ matrix.rocm-version }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -140,11 +108,11 @@ jobs:
           echo "HIPCXX=$hipPath\bin\clang++.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "HIP_PLATFORM=amd" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "CMAKE_PREFIX_PATH=$hipPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - if: matrix.preset == 'CPU'
+      - if: matrix.shouldExclude == false && matrix.preset == 'CPU'
         run: |
           echo "CC=clang.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "CXX=clang++.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - if: ${{ !cancelled() && steps.cache-install.outputs.cache-hit != 'true' }}
+      - if: ${{ matrix.shouldExclude == false && !cancelled() && steps.cache-install.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
@@ -152,11 +120,14 @@ jobs:
             C:\Program Files\AMD\ROCm
           key: ${{ matrix.install }}
       - uses: actions/checkout@v4
+        if: matrix.shouldExclude == false
       - uses: actions/cache@v4
+        if: matrix.shouldExclude == false
         with:
           path: ${{ github.workspace }}\.ccache
           key: ccache-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.preset }}
       - name: Build target "${{ matrix.preset }}"
+        if: matrix.shouldExclude == false
         run: |
           Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
           Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation  -DevCmdArguments '-arch=x64 -no_logo'
@@ -167,6 +138,7 @@ jobs:
         env:
           CMAKE_GENERATOR: Ninja
       - uses: actions/upload-artifact@v4
+        if: matrix.shouldExclude == false
         with:
           name: depends-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.preset }}
           path: dist\*
@@ -175,15 +147,12 @@ jobs:
     strategy:
       matrix:
         os: [windows]
-        arch: [amd64, arm64]
+        arch: [amd64]
         include:
         - os: windows
           arch: amd64
           llvmarch: x86_64
-        - os: windows
-          arch: arm64
-          llvmarch: aarch64
-    runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
+    runs-on: windows-latest
     environment: release
     needs: [setup-environment]
     env:
@@ -231,169 +200,61 @@ jobs:
           path: |
             dist\${{ matrix.os }}-${{ matrix.arch }}\*.exe
 
-  linux-build:
-    strategy:
-      matrix:
-        include:
-          - os: linux
-            arch: amd64
-            target: archive
-          - os: linux
-            arch: amd64
-            target: rocm
-          - os: linux
-            arch: arm64
-            target: archive
-    runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
+  windows-sign:
+    runs-on: windows-latest
     environment: release
-    needs: setup-environment
-    env:
-      GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
+    needs: [windows-depends, windows-build]
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ matrix.os }}/${{ matrix.arch }}
-          target: ${{ matrix.target }}
-          build-args: |
-            GOFLAGS=${{ env.GOFLAGS }}
-            CGO_CFLAGS=${{ env.CGO_CFLAGS }}
-            CGO_CXXFLAGS=${{ env.CGO_CXXFLAGS }}
-          outputs: type=local,dest=dist/${{ matrix.os }}-${{ matrix.arch }}
-          cache-from: type=registry,ref=${{ vars.DOCKER_REPO }}:latest
-          cache-to: type=inline
       - run: |
-          for COMPONENT in bin/* lib/ollama/*; do
-            case "$COMPONENT" in
-              bin/ollama)                echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/*.so*)          echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/cuda_v*)        echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/cuda_jetpack5)  echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-jetpack5.tar.in ;;
-              lib/ollama/cuda_jetpack6)  echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-jetpack6.tar.in ;;
-              lib/ollama/rocm)           echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-rocm.tar.in ;;
-            esac
-          done
-        working-directory: dist/${{ matrix.os }}-${{ matrix.arch }}
-      - run: |
-          echo "Manifests"
-          for ARCHIVE in dist/${{ matrix.os }}-${{ matrix.arch }}/*.tar.in ; do
-            echo $ARCHIVE
-            cat $ARCHIVE
-          done
-      - run: |
-          for ARCHIVE in dist/${{ matrix.os }}-${{ matrix.arch }}/*.tar.in; do
-            tar c -C dist/${{ matrix.os }}-${{ matrix.arch }} -T $ARCHIVE --owner 0 --group 0 | pigz -9vc >$(basename ${ARCHIVE//.*/}.tgz);
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.target }}
-          path: |
-            *.tgz
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=323507" -OutFile "${{ runner.temp }}\sdksetup.exe"
+          Start-Process "${{ runner.temp }}\sdksetup.exe" -ArgumentList @("/q") -NoNewWindow -Wait
 
-  # Build each Docker variant (OS, arch, and flavor) separately. Using QEMU is unreliable and slower.
-  docker-build-push:
-    strategy:
-      matrix:
-        include:
-          - os: linux
-            arch: arm64
-            build-args: |
-              CGO_CFLAGS
-              CGO_CXXFLAGS
-              GOFLAGS
-          - os: linux
-            arch: amd64
-            build-args: |
-              CGO_CFLAGS
-              CGO_CXXFLAGS
-              GOFLAGS
-          - os: linux
-            arch: amd64
-            suffix: '-rocm'
-            build-args: |
-              CGO_CFLAGS
-              CGO_CXXFLAGS
-              GOFLAGS
-              FLAVOR=rocm
-    runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
-    environment: release
-    needs: setup-environment
-    env:
-      GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKER_USER }}
-          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - id: build-push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ matrix.os }}/${{ matrix.arch }}
-          build-args: ${{ matrix.build-args }}
-          outputs: type=image,name=${{ vars.DOCKER_REPO }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=registry,ref=${{ vars.DOCKER_REPO }}:latest
-          cache-to: type=inline
-      - run: |
-          mkdir -p ${{ matrix.os }}-${{ matrix.arch }}
-          echo "${{ steps.build-push.outputs.digest }}" >${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.suffix }}.txt
-        working-directory: ${{ runner.temp }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: digest-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.suffix }}
-          path: |
-            ${{ runner.temp }}/${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.suffix }}.txt
+          Invoke-WebRequest -Uri "https://github.com/GoogleCloudPlatform/kms-integrations/releases/download/cng-v1.0/kmscng-1.0-windows-amd64.zip" -OutFile "${{ runner.temp }}\plugin.zip"
+          Expand-Archive -Path "${{ runner.temp }}\plugin.zip" -DestinationPath "${{ runner.temp }}\plugin\"
+          & "${{ runner.temp }}\plugin\*\kmscng.msi" /quiet
 
-  # Merge Docker images for the same flavor into a single multi-arch manifest
-  docker-merge-push:
-    strategy:
-      matrix:
-        suffix: ['', '-rocm']
-    runs-on: linux
-    environment: release
-    needs: [docker-build-push]
-    steps:
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKER_USER }}
-          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - id: metadata
-        uses: docker/metadata-action@v4
-        with:
-          flavor: |
-            latest=false
-            suffix=${{ matrix.suffix }}
-          images: |
-            ${{ vars.DOCKER_REPO }}
-          tags: |
-            type=ref,enable=true,priority=600,prefix=pr-,event=pr
-            type=semver,pattern={{version}}
+          echo "${{ vars.OLLAMA_CERT }}" >ollama_inc.crt
       - uses: actions/download-artifact@v4
         with:
-          pattern: digest-*
-          path: ${{ runner.temp }}
+          pattern: build-windows-*
+          path: dist\
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: depends-windows-amd64-*
+          path: dist\windows-amd64\
           merge-multiple: true
       - run: |
-          docker buildx imagetools create $(echo '${{ steps.metadata.outputs.json }}' | jq -cr '.tags | map("-t", .) | join(" ")') $(cat *-${{ matrix.suffix }}.txt | xargs printf '${{ vars.DOCKER_REPO }}@%s ')
-          docker buildx imagetools inspect ${{ vars.DOCKER_REPO }}:${{ steps.metadata.outputs.version }}
-        working-directory: ${{ runner.temp }}
+          & .\scripts\build_windows.ps1 gatherDependencies sign buildInstaller distZip
+        env:
+          KEY_CONTAINER: ${{ vars.KEY_CONTAINER }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows
+          path: |
+            dist\OllamaSetup.exe
+            dist\ollama-windows-*.zip
 
-  # Trigger downstream release process
-  trigger:
+  # Aggregate all the assets and ship a release
+  release:
+    needs: [windows-sign]
     runs-on: ubuntu-latest
     environment: release
-    needs: [darwin-build, windows-build, windows-depends, linux-build]
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Create or update Release for tag
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-windows
+          path: dist
+      - run: find . -type f -not -name 'sha256sum.txt' | xargs sha256sum | tee sha256sum.txt
+        working-directory: dist
+      - name: Create or update Release
         run: |
           RELEASE_VERSION="$(echo ${GITHUB_REF_NAME} | cut -f1 -d-)"
           echo "Looking for existing release for ${RELEASE_VERSION}"
@@ -409,12 +270,5 @@ jobs:
               --generate-notes \
               --prerelease
           fi
-      - name: Trigger downstream release process
-        run: |
-          curl -L \
-            -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.RELEASE_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/ollama/${{ vars.RELEASE_REPO }}/dispatches \
-            -d "{\"event_type\": \"trigger-workflow\", \"client_payload\": {\"run_id\": \"${GITHUB_RUN_ID}\", \"version\": \"${GITHUB_REF_NAME#v}\", \"origin\": \"${GITHUB_REPOSITORY}\", \"publish\": \"1\"}}"
+          echo "Uploading artifacts for tag ${GITHUB_REF_NAME}"
+          gh release upload ${GITHUB_REF_NAME} dist/* --clobber
