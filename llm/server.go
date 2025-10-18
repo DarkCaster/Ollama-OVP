@@ -869,6 +869,7 @@ func (s *ollamaServer) createLayout(systemInfo discover.SystemInfo, systemGPUs d
 		return ml.GPULayersList{}, nil
 	}
 
+	overprov := envconfig.GpuOverprov()
 	gpus := append(make(discover.GpuInfoList, 0, len(systemGPUs)), systemGPUs...)
 	sort.Sort(sort.Reverse(discover.ByFreeMemory(gpus)))
 
@@ -905,6 +906,7 @@ func (s *ollamaServer) createLayout(systemInfo discover.SystemInfo, systemGPUs d
 						lastUsedGPU = i
 					}
 
+					gl[i].FreeMemory += overprov //add overprovision amount to the free mem
 					reserved := uint64(float32(gl[i].FreeMemory)*backoff) + gl[i].MinimumMemory + envconfig.GpuOverhead() + memory.GPUs[j].Graph
 					if gl[i].FreeMemory > reserved {
 						gl[i].FreeMemory -= reserved
