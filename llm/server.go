@@ -869,7 +869,7 @@ func (s *ollamaServer) createLayout(systemInfo discover.SystemInfo, systemGPUs d
 		return ml.GPULayersList{}, nil
 	}
 
-	overprov := envconfig.GpuOverprov()
+	overprov := envconfig.GpuOverprovNew()
 	gpus := append(make(discover.GpuInfoList, 0, len(systemGPUs)), systemGPUs...)
 	sort.Sort(sort.Reverse(discover.ByFreeMemory(gpus)))
 
