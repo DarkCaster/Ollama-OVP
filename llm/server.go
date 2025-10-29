@@ -820,7 +820,6 @@ func uniqueDeviceIDs(gpuLayers ml.GPULayersList) []ml.DeviceID {
 // - Assigning layers
 // - Ensuring that we don't exceed limits, such as requirements about partial offloading or system memory
 func (s *ollamaServer) createLayout(systemInfo ml.SystemInfo, systemGPUs []ml.DeviceInfo, memory *ml.BackendMemory, requireFull bool, backoff float32) (ml.GPULayersList, error) {
-	overprov := envconfig.GpuOverprovNew()
 	if memory == nil {
 		memory = &ml.BackendMemory{CPU: ml.DeviceMemory{
 			Weights: make([]uint64, s.totalLayers),
@@ -841,7 +840,7 @@ func (s *ollamaServer) createLayout(systemInfo ml.SystemInfo, systemGPUs []ml.De
 func (s *ollamaServer) buildLayout(systemGPUs []ml.DeviceInfo, memory *ml.BackendMemory, requireFull bool, backoff float32) (ml.GPULayersList, []uint64, error) {
 	gpus := append(make([]ml.DeviceInfo, 0, len(systemGPUs)), systemGPUs...)
 	sort.Sort(sort.Reverse(ml.ByFreeMemory(gpus)))
-
+	overprov := envconfig.GpuOverprovNew()
 	layers := make([]uint64, len(memory.CPU.Weights))
 	for i := range layers {
 		for j := range memory.GPUs {
